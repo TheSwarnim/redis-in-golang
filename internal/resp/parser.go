@@ -1,5 +1,33 @@
 package resp
 
+/*
+Parser reads RESP values from an io.Reader.
+
+Example usage:
+
+	parser := resp.NewParser(strings.NewReader("+OK\r\n"))
+	value, err := parser.Parse()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(value.Str) // Output: OK
+
+	parser = resp.NewParser(strings.NewReader(":1234\r\n"))
+	value, err = parser.Parse()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(value.Num) // Output: 1234
+
+	parser = resp.NewParser(strings.NewReader("$5\r\nhello\r\n"))
+	value, err = parser.Parse()
+	if err != nil {
+		log.Fatal(err)
+	}
+*/
+
 import (
 	"bufio"
 	"fmt"

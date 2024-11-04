@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"strings"
+
+	"github.com/codecrafters-io/redis-starter-go/internal/resp"
 )
 
 func main() {
@@ -32,24 +33,62 @@ func handleConnection(conn net.Conn) {
 		fmt.Printf("Connection closed from %s\n", conn.RemoteAddr())
 	}()
 
-	fmt.Printf("Handling connection from %s\n", conn.RemoteAddr())
+	parser := resp.NewParser(conn)
+	writer := resp.NewWriter(conn)
 
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		text := scanner.Text()
-		fmt.Printf("Received from %s: %s\n", conn.RemoteAddr(), text)
+	for {
+		value, err := parser.Parse()
+		if err != nil {
+			fmt.Printf("Error parsing from %s: %s\n", conn.RemoteAddr(), err)
+			return
+		}
 
-		if strings.TrimSpace(text) == "PING" {
-			_, err := conn.Write([]byte("+PONG\r\n"))
-			if err != nil {
-				fmt.Printf("Error writing to %s: %s\n", conn.RemoteAddr(), err)
-				return
-			}
-			fmt.Printf("Sent PONG to %s\n", conn.RemoteAddr())
+		if value.Type != resp.Array {
+			fmt.Printf("Expected array but got %T\n", value.Type)
+			continue
+		}
+
+		response := handleCommand(value.Array)
+		err = writer.Write(response)
+		if err != nil {
+			fmt.Printf("Error writing to %s: %s\n", conn.RemoteAddr(), err)
+			return
 		}
 	}
+}
 
-	if err := scanner.Err(); err != nil {
-		fmt.Printf("Scanner error for %s: %s\n", conn.RemoteAddr(), err)
+func handleCommand(commands []resp.Value) resp.Value {
+	if len(commands) == 0 {
+		return resp.ErrorVal("Error: no command provided")
 	}
+
+	// the first command is the command name
+	command := strings.ToUpper(commands[0].Str)
+	args := commands[1:]
+
+	switch command {
+	case "PING":
+		return handlePing(args)
+	case "ECHO":
+		return handleEcho(args)
+	default:
+		return resp.ErrorVal(fmt.Sprintf("Error: unknown command '%s'", command))
+	}
+}
+
+func handlePing(args []resp.Value) resp.Value {
+	if len(args) == 0 {
+		return resp.SimpleStringVal("PONG")
+	}
+
+	// If there are arguments, return the first one
+	return resp.BulkStringVal(args[0].Str)
+}
+
+func handleEcho(args []resp.Value) resp.Value {
+	if len(args) != 1 {
+		return resp.ErrorVal("Error: ECHO command requires exactly 1 argument")
+	}
+
+	return resp.BulkStringVal(args[0].Str)
 }

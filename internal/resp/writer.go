@@ -1,5 +1,32 @@
 package resp
 
+/*
+Writer provides methods to write RESP values to an io.Writer.
+
+Example usage:
+
+	writer := resp.NewWriter(os.Stdout)
+	err := writer.Write(resp.SimpleStringVal("OK"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = writer.Write(resp.IntegerVal(1234))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = writer.Write(resp.BulkStringVal("hello"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = writer.Write(resp.ArrayVal([]resp.Value{
+		resp.BulkStringVal("hello"),
+		resp.BulkStringVal("world"),
+	}))
+*/
+
 import (
 	"fmt"
 	"io"
