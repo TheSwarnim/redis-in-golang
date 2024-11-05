@@ -1,5 +1,7 @@
 package resp
 
+import "time"
+
 type Type byte
 
 const (
@@ -12,11 +14,23 @@ const (
 
 // Value represents a RESP value.
 type Value struct {
-	Type  Type
-	Str   string
-	Num   int64
-	Array []Value
-	IsNil bool
+	Type       Type
+	Str        string
+	Num        int64
+	Array      []Value
+	IsNil      bool
+	ExpiryTime *time.Time // expiry support
+}
+
+// IsExpired checks if the value has expired
+func (v *Value) IsExpired() bool {
+	return v.ExpiryTime != nil && time.Now().After(*v.ExpiryTime)
+}
+
+// SetExpiry sets the expiry time for the value
+func (v *Value) SetExpiry(duration time.Duration) {
+	t := time.Now().Add(duration)
+	v.ExpiryTime = &t
 }
 
 // Helper functions to create RESP values.
@@ -34,6 +48,13 @@ func IntegerVal(n int64) Value {
 
 func BulkStringVal(s string) Value {
 	return Value{Type: BulkString, Str: s}
+}
+
+// BulkStringValWithExpiry creates a new BulkString value with an expiry time.
+func BulkStringValWithExpiry(s string, expiry time.Duration) Value {
+	v := BulkStringVal(s)
+	v.SetExpiry(expiry)
+	return v
 }
 
 func NullBulkStringVal() Value {

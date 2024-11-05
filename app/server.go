@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/codecrafters-io/redis-starter-go/internal/resp"
 )
@@ -12,23 +14,38 @@ import (
 // Store represents a simple in-memory key-value store
 type Store struct {
 	mu   sync.RWMutex
-	data map[string]string
+	data map[string]resp.Value
 }
 
 func NewStore() *Store {
 	return &Store{
-		data: make(map[string]string),
+		data: make(map[string]resp.Value),
 	}
 }
 
-func (s *Store) Get(key string) (string, bool) {
+func (s *Store) Get(key string) (resp.Value, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+
 	val, exists := s.data[key]
-	return val, exists
+	if !exists {
+		return resp.Value{}, false
+	}
+
+	if val.IsExpired() {
+		// Delete expired key under write lock
+		s.mu.RUnlock()
+		s.mu.Lock()
+		delete(s.data, key)
+		s.mu.Unlock()
+		s.mu.RLock()
+		return resp.Value{}, false
+	}
+
+	return val, true
 }
 
-func (s *Store) Set(key, value string) {
+func (s *Store) Set(key string, value resp.Value) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.data[key] = value
@@ -128,14 +145,37 @@ func handleEcho(args []resp.Value) resp.Value {
 }
 
 func handleSet(args []resp.Value, store *Store) resp.Value {
-	if len(args) != 2 {
-		return resp.ErrorVal("Error: SET command requires exactly 2 arguments")
+	if len(args) < 2 {
+		return resp.ErrorVal("Error: SET command requires at least 2 arguments")
 	}
 
 	key := args[0].Str
 	value := args[1].Str
-	store.Set(key, value)
+	var val resp.Value
 
+	// Parse optional parameters
+	for i := 2; i < len(args); i++ {
+		switch strings.ToUpper(args[i].Str) {
+		case "PX":
+			if i+1 >= len(args) {
+				return resp.ErrorVal("Error: PX option requires a value")
+			}
+			milliseconds, err := strconv.Atoi(args[i+1].Str)
+			if err != nil {
+				return resp.ErrorVal("Error: value is not an integer or out of range")
+			}
+			val = resp.BulkStringValWithExpiry(value, time.Duration(milliseconds)*time.Millisecond)
+			i++
+		default:
+			return resp.ErrorVal("Error: invalid option")
+		}
+	}
+
+	if val.Type == 0 { // No expiry set because default value is 0 for Type(byte)
+		val = resp.BulkStringVal(value)
+	}
+
+	store.Set(key, val)
 	return resp.SimpleStringVal("OK")
 }
 
@@ -150,5 +190,5 @@ func handleGet(args []resp.Value, store *Store) resp.Value {
 		return resp.NullBulkStringVal()
 	}
 
-	return resp.BulkStringVal(value)
+	return value
 }
